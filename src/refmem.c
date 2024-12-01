@@ -6,15 +6,17 @@
 
 #define GC_DEFAULT_LIMIT 10000
 
+void default_destructor(obj *data);
+
 struct object {
-    int16_t rc;
-    int8_t pointers;
+    obj *data;
+
+    int32_t rc;
     uint32_t size;
     uint32_t array_size;
 
-    function1_t destructor;
-
-    obj *data;
+    int8_t pointers;
+    uint8_t destructor;
 };
 
 typedef struct object object_t;
@@ -25,6 +27,9 @@ struct gc {
     size_t cascade_count;
 
     object_t *objects;
+
+    function1_t *destructors;
+    size_t destructor_count;
 };
 
 struct gc *gc = NULL;
@@ -86,7 +91,26 @@ struct gc *create_gc() {
     gc->count = 0;
     gc->limit = GC_DEFAULT_LIMIT;
     gc->cascade_count = 0;
+    gc->destructors = malloc(2 * sizeof(function1_t));
+    gc->destructors[0] = NULL;
+    gc->destructors[1] = default_destructor;
+    gc->destructor_count = 2;
     return gc;
+}
+
+size_t get_destructor_index(function1_t destructor) {
+    size_t index = 0;
+    while (index < gc->destructor_count) {
+        if (gc->destructors[index] == destructor) {
+            return index;
+        }
+        index++;
+    }
+    gc->destructors =
+        realloc(gc->destructors, (index + 1) * sizeof(function1_t));
+    gc->destructors[index] = destructor;
+    gc->destructor_count++;
+    return index;
 }
 
 void default_destructor(obj *data) {
@@ -108,7 +132,7 @@ void initialize_object(size_t elements, size_t bytes, function1_t destructor,
     object->rc = 0;
     object->size = bytes;
     object->array_size = elements;
-    object->destructor = destructor;
+    object->destructor = get_destructor_index(destructor);
     object->pointers = pointers;
     object->data = calloc(elements, bytes);
 }
@@ -144,7 +168,7 @@ void deallocate(obj *data) {
     object_t *object = &gc->objects[position];
 
     if (object->destructor) {
-        object->destructor(data);
+        gc->destructors[object->destructor](data);
     }
 
     object = get_object(data);
@@ -184,8 +208,9 @@ void cleanup() {
 
 void shutdown() {
     while (gc->count > 0) {
-        gc->objects[0].destructor = NULL;
+        gc->objects[0].destructor = 0;
         deallocate(gc->objects[0].data);
     }
+    free(gc->destructors);
     free(gc);
 }
