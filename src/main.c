@@ -12,7 +12,7 @@ struct cell {
 };
 
 void test_array() {
-    const size_t ARRAY_SIZE = 1000;
+    const size_t ARRAY_SIZE = 10000;
     size_t **array = allocate_array(ARRAY_SIZE, sizeof(size_t *), NULL, 1);
     retain(array);
 
@@ -20,6 +20,11 @@ void test_array() {
         array[i] = allocate(sizeof(size_t), NULL, 0);
         retain(array[i]);
         *array[i] = i;
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE; i++) {
+        assert(*array[i] == i);
+        release(array[i]);
     }
 
     printf("%lu\n",

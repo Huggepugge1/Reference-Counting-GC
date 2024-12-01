@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #define GC_DEFAULT_LIMIT 10000
+#define PAGE_SIZE 128
 
 void default_destructor(obj *data);
 
@@ -27,9 +28,12 @@ struct gc {
     size_t cascade_count;
 
     object_t *objects;
+    size_t objects_size;
 
     function1_t *destructors;
     size_t destructor_count;
+
+    size_t reallocations;
 };
 
 struct gc *gc = NULL;
@@ -87,14 +91,20 @@ size_t rc(obj *data) {
 
 struct gc *create_gc() {
     struct gc *gc = malloc(sizeof(struct gc));
-    gc->objects = NULL;
+    gc->objects = malloc(sizeof(object_t) * 1024);
+    gc->objects_size = 1024;
     gc->count = 0;
+
     gc->limit = GC_DEFAULT_LIMIT;
     gc->cascade_count = 0;
+
     gc->destructors = malloc(2 * sizeof(function1_t));
     gc->destructors[0] = NULL;
     gc->destructors[1] = default_destructor;
     gc->destructor_count = 2;
+
+    gc->reallocations = 0;
+
     return gc;
 }
 
@@ -125,6 +135,14 @@ void default_destructor(obj *data) {
     }
 }
 
+void allocate_space() {
+    if (gc->count == gc->objects_size) {
+        gc->objects_size += PAGE_SIZE;
+        gc->objects = realloc(gc->objects, gc->objects_size * sizeof(object_t));
+        gc->reallocations++;
+    }
+}
+
 void initialize_object(size_t elements, size_t bytes, function1_t destructor,
                        size_t pointers) {
     object_t *object = &gc->objects[gc->count];
@@ -151,11 +169,7 @@ obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
         destructor = default_destructor;
     }
 
-    if (gc->count > 0) {
-        gc->objects = realloc(gc->objects, (gc->count + 1) * sizeof(object_t));
-    } else {
-        gc->objects = calloc(1, sizeof(object_t));
-    }
+    allocate_space();
 
     initialize_object(elements, elem_size, destructor, pointers);
     gc->count++;
@@ -180,11 +194,6 @@ void deallocate(obj *data) {
     }
 
     gc->count--;
-    if (gc->count > 0) {
-        gc->objects = realloc(gc->objects, (gc->count) * sizeof(object_t));
-    } else {
-        free(gc->objects);
-    }
 }
 
 void set_cascade_limit(size_t limit) { gc->limit = limit; }
@@ -211,6 +220,8 @@ void shutdown() {
         gc->objects[0].destructor = 0;
         deallocate(gc->objects[0].data);
     }
+    printf("Reallocation count: %lu\n", gc->reallocations);
+    free(gc->objects);
     free(gc->destructors);
     free(gc);
 }
