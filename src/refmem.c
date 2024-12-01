@@ -1,4 +1,5 @@
 #include "refmem.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -6,8 +7,9 @@
 
 struct object {
     size_t rc;
-    size_t position;
     size_t size;
+    size_t array_size;
+    size_t pointers;
 
     function1_t destructor;
 
@@ -28,11 +30,25 @@ struct gc *gc = NULL;
 
 object_t *get_object(obj *object) {
     size_t index = 0;
-    obj *data = gc->objects[index].data;
-    while (object != data) {
-        data = gc->objects[++index].data;
+    obj *data = NULL;
+    while (object != data && index < gc->count) {
+        data = gc->objects[index].data;
+        index++;
     }
-    return &gc->objects[index];
+    if (index - 1 < gc->count) {
+        return &gc->objects[index - 1];
+    }
+    return NULL;
+}
+
+size_t get_object_position(obj *object) {
+    size_t index = 0;
+    obj *data = NULL;
+    while (object != data && index < gc->count) {
+        data = gc->objects[index].data;
+        index++;
+    }
+    return index - 1;
 }
 
 void retain(obj *data) {
@@ -72,42 +88,69 @@ struct gc *create_gc() {
     return gc;
 }
 
-obj *allocate(size_t bytes, function1_t destructor) {
+void default_destructor(obj *data) {
+    object_t *object = get_object(data);
+    for (int element = 0; element < object->array_size; element++) {
+        size_t pointer_index = 0;
+        while (pointer_index < object->pointers) {
+            release(((void **)(data + object->size * element))[pointer_index]);
+            pointer_index++;
+            object = get_object(data);
+        }
+    }
+}
+
+void initialize_object(size_t elements, size_t bytes, function1_t destructor,
+                       size_t pointers) {
+    object_t *object = &gc->objects[gc->count];
+
+    object->rc = 0;
+    object->size = bytes;
+    object->array_size = elements;
+    object->destructor = destructor;
+    object->pointers = pointers;
+    object->data = calloc(elements, bytes);
+}
+
+obj *allocate(size_t bytes, function1_t destructor, size_t pointers) {
+    return allocate_array(1, bytes, destructor, pointers);
+}
+
+obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
+                    size_t pointers) {
     if (!gc) {
         gc = create_gc();
     }
-    gc->objects = realloc(gc->objects, (gc->count + 1) * sizeof(object_t));
 
-    gc->objects[gc->count].rc = 0;
-    gc->objects[gc->count].position = gc->count;
-    gc->objects[gc->count].size = bytes;
-    gc->objects[gc->count].destructor = destructor;
-    gc->objects[gc->count].data = calloc(1, bytes);
+    if (destructor == NULL) {
+        destructor = default_destructor;
+    }
 
+    if (gc->count > 0) {
+        gc->objects = realloc(gc->objects, (gc->count + 1) * sizeof(object_t));
+    } else {
+        gc->objects = calloc(1, sizeof(object_t));
+    }
+
+    initialize_object(elements, elem_size, destructor, pointers);
     gc->count++;
 
     return gc->objects[gc->count - 1].data;
 }
 
-obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor) {
-    if (!gc) {
-        gc = create_gc();
-    }
-    return allocate(elements * elem_size, destructor);
-}
-
 void deallocate(obj *data) {
-    object_t *object = get_object(data);
-    size_t position = object->position + 1;
+    size_t position = get_object_position(data);
+    object_t *object = &gc->objects[position];
 
-    object->destructor(data);
+    if (object->destructor) {
+        object->destructor(data);
+    }
 
     object = get_object(data);
     free(object->data);
 
     while (position < gc->count - 1) {
         gc->objects[position] = gc->objects[position + 1];
-        gc->objects[position].position = position;
         position++;
     }
 
@@ -116,13 +159,14 @@ void deallocate(obj *data) {
         gc->objects = realloc(gc->objects, (gc->count) * sizeof(object_t));
     } else {
         free(gc->objects);
-        gc->objects = NULL;
     }
 }
 
 void set_cascade_limit(size_t limit) { gc->limit = limit; }
 
 size_t get_cascade_limit() { return gc->limit; }
+
+size_t get_count() { return gc->count; }
 
 void cleanup() {
     if (!gc->objects) {
@@ -139,6 +183,7 @@ void cleanup() {
 
 void shutdown() {
     while (gc->count > 0) {
+        gc->objects[0].destructor = NULL;
         deallocate(gc->objects[0].data);
     }
     free(gc);

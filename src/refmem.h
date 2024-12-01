@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 
 typedef void obj;
@@ -34,9 +35,14 @@ size_t rc(obj *);
  * @param bytes The size of the object to allocate.
  * @param destructor The destructor function to call when the object is
  * deallocated.
+ * @param pointers The number of pointers to heap-allocated objects in the
+ * object.
  * @return obj* The allocated object.
+ *
+ * @precodition All pointers in the object to other heap-allocated objects must
+ * be at the beginning of the object.
  */
-obj *allocate(size_t bytes, function1_t destructor);
+obj *allocate(size_t bytes, function1_t destructor, size_t pointers);
 
 /**
  * @brief Allocate an array of objects.
@@ -45,9 +51,13 @@ obj *allocate(size_t bytes, function1_t destructor);
  * @param elem_size The size of each element in the array.
  * @param destructor The destructor function to call when the object is
  * deallocated.
+ * @param pointers The number of pointers to heap-allocated objects in each of
+ * the elements in the array. The pointers must be at the beginning of each
+ * element.
  * @return obj* The allocated array.
  */
-obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor);
+obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
+                    size_t pointers);
 
 /**
  * @brief Deallocate an object.
@@ -71,8 +81,18 @@ void set_cascade_limit(size_t);
 size_t get_cascade_limit();
 
 /**
+ * @brief Get the number of objects in the garbage collector.
+ *
+ * @return size_t The number of objects in the garbage collector.
+ */
+size_t get_count();
+
+/**
  * @brief Clean up all allocated memory.
  */
 void cleanup();
 
+/**
+ * @brief Shut down the garbage collector.
+ */
 void shutdown();
