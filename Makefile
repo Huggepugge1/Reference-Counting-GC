@@ -7,8 +7,8 @@ MEMFLAGS = --leak-check=full --show-leak-kinds=all
 main: ./src/main.c ./src/refmem.h ./src/refmem.c
 	$(COMPILER) $(CFLAGS) -o ./bin/main ./src/main.c ./src/refmem.c
 
-memtest: main
-	$(MEMTESTER) $(MEMFLAGS) ./main
+memtest: ./bin/main
+	$(MEMTESTER) $(MEMFLAGS) ./bin/main
 
 .DEFAULT_GOAL := run
 run: ./bin/main
