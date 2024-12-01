@@ -15,4 +15,4 @@ run: ./bin/main
 	./bin/main
 
 clean:
-	rm -f main
+	rm -rf bin
