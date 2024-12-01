@@ -12,14 +12,17 @@ struct cell {
 };
 
 void test_array() {
-    int **array = allocate_array(10, sizeof(int *), NULL, 1);
+    const size_t ARRAY_SIZE = 10000;
+    int **array = allocate_array(ARRAY_SIZE, sizeof(int *), NULL, 1);
     retain(array);
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < ARRAY_SIZE; i++) {
         array[i] = allocate(sizeof(int), NULL, 0);
         retain(array[i]);
         *array[i] = i;
     }
+
+    printf("%lu\n", sizeof(int) * ARRAY_SIZE + sizeof(int *) * ARRAY_SIZE);
     release(array);
 }
 
@@ -42,8 +45,6 @@ int main(void) {
     c->cell->cell = NULL;
 
     test_array();
-    release(c);
-
     shutdown();
 
     return 0;

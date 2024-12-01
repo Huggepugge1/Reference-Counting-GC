@@ -8,9 +8,9 @@
 
 struct object {
     int16_t rc;
+    int8_t pointers;
     uint32_t size;
     uint32_t array_size;
-    int16_t pointers;
 
     function1_t destructor;
 
