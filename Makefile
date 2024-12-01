@@ -4,7 +4,7 @@ CFLAGS = -Wall -pedantic -std=c99 -g
 MEMTESTER = valgrind
 MEMFLAGS = --leak-check=full --show-leak-kinds=all
 
-main: ./src/main.c ./src/refmem.h ./src/refmem.c
+bin/main: ./src/main.c ./src/refmem.h ./src/refmem.c
 	$(COMPILER) $(CFLAGS) -o ./bin/main ./src/main.c ./src/refmem.c
 
 memtest: ./bin/main

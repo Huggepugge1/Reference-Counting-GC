@@ -1,6 +1,7 @@
 #include "refmem.h"
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -44,5 +45,6 @@ int main(void) {
     release(c);
 
     shutdown();
+
     return 0;
 }

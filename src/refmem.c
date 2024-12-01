@@ -1,15 +1,16 @@
 #include "refmem.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #define GC_DEFAULT_LIMIT 10000
 
 struct object {
-    size_t rc;
-    size_t size;
-    size_t array_size;
-    size_t pointers;
+    int16_t rc;
+    uint32_t size;
+    uint32_t array_size;
+    int16_t pointers;
 
     function1_t destructor;
 
