@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 #define GC_DEFAULT_LIMIT 10000
-#define PAGE_SIZE 128
+#define PAGE_SIZE 1024
 
 void default_destructor(obj *data);
 
@@ -17,6 +17,7 @@ struct object {
     int8_t pointers;
     uint8_t destructor;
 
+    bool freed;
     bool array;
 };
 
@@ -40,15 +41,10 @@ struct gc *gc = NULL;
 
 object_t *get_object(obj *object) {
     size_t index = 0;
-    obj *data = NULL;
-    while (object != data && index < gc->count) {
-        data = gc->objects[index].data;
+    while (object != gc->objects[index].data) {
         index++;
     }
-    if (index - 1 < gc->count) {
-        return &gc->objects[index - 1];
-    }
-    return NULL;
+    return &gc->objects[index];
 }
 
 size_t get_object_position(obj *object) {
@@ -91,8 +87,8 @@ size_t rc(obj *data) {
 
 struct gc *create_gc() {
     struct gc *gc = malloc(sizeof(struct gc));
-    gc->objects = malloc(sizeof(object_t) * 1024);
-    gc->objects_size = 1024;
+    gc->objects = calloc(PAGE_SIZE, sizeof(object_t));
+    gc->objects_size = PAGE_SIZE;
     gc->count = 0;
 
     gc->limit = GC_DEFAULT_LIMIT;
@@ -165,6 +161,44 @@ void default_array_destructor(obj *data) {
     }
 }
 
+void compact_space() {
+    int64_t last_freed = -1;
+    size_t counter = 0;
+    for (size_t index = 0; index < gc->objects_size; index++) {
+        if (gc->objects[index].freed) {
+            last_freed = index;
+            continue;
+        } else if (last_freed != -1) {
+            gc->objects[last_freed] = gc->objects[index];
+            gc->objects[index].freed = true;
+            index = last_freed + 1;
+            last_freed = -1;
+            continue;
+        }
+        counter++;
+        if (counter == gc->count) {
+            break;
+        }
+    }
+    while (gc->objects_size - gc->count > PAGE_SIZE) {
+        gc->objects_size -= PAGE_SIZE;
+        gc->objects = realloc(gc->objects, gc->objects_size * sizeof(object_t));
+        gc->reallocations++;
+    }
+}
+
+void allocate_space() {
+    compact_space();
+    if (gc->count == gc->objects_size) {
+        gc->objects_size += PAGE_SIZE;
+        gc->objects = realloc(gc->objects, gc->objects_size * sizeof(object_t));
+        for (size_t index = gc->count; index < gc->objects_size; index++) {
+            gc->objects[index].freed = true;
+        }
+        gc->reallocations++;
+    }
+}
+
 obj *allocate(size_t bytes, function1_t destructor, size_t pointers) {
     if (!gc) {
         gc = create_gc();
@@ -189,10 +223,9 @@ void initialize_array_object(size_t elements, size_t bytes,
     object->rc = 0;
     object->destructor = get_destructor_index(destructor);
     object->pointers = pointers;
-    object->array = true;
-    object->data = calloc(1, elements * bytes + 2 * sizeof(size_t));
-    *(size_t *)object->data = elements;
-    *(size_t *)(object->data + sizeof(size_t)) = bytes;
+    object->data = calloc(elements, bytes);
+
+    object->freed = false;
 }
 
 obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
@@ -223,11 +256,7 @@ void deallocate(obj *data) {
 
     object = get_object(data);
     free(object->data);
-
-    while (position < gc->count - 1) {
-        gc->objects[position] = gc->objects[position + 1];
-        position++;
-    }
+    object->freed = true;
 
     gc->count--;
 }
@@ -252,9 +281,15 @@ void cleanup() {
 }
 
 void shutdown() {
-    while (gc->count > 0) {
-        gc->objects[0].destructor = 0;
-        deallocate(gc->objects[0].data);
+    size_t index = 0;
+    while (index < gc->objects_size) {
+        if (gc->objects[index].freed) {
+            index++;
+            continue;
+        }
+        gc->objects[index].destructor = 0;
+        deallocate(gc->objects[index].data);
+        index++;
     }
     printf("Reallocation count: %lu\n", gc->reallocations);
     free(gc->objects);

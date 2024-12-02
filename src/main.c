@@ -33,27 +33,25 @@ void test_array() {
     release(array);
 }
 
-void cell_destructor(obj *c) { release(((struct cell *)c)->cell); }
-
 int main(void) {
-    struct cell *c = allocate(sizeof(struct cell), cell_destructor, 1);
+    struct cell *c = allocate(sizeof(struct cell), NULL, 1);
     retain(c);
 
     retain(c->string);
 
-    c->cell = allocate(sizeof(struct cell), cell_destructor, 1);
+    c->cell = allocate(sizeof(struct cell), NULL, 1);
     c->cell->i = 42;
     retain(c->cell);
-    c->cell = NULL;
 
-    release(c->cell);
-    c->cell = allocate(sizeof(struct cell), cell_destructor, 1);
+    c->cell = allocate(sizeof(struct cell), NULL, 1);
     c->cell->i = 40;
     retain(c->cell);
 
     c->cell->cell = NULL;
 
     test_array();
+
+    printf("%zd\n", get_count());
     shutdown();
 
     return 0;
