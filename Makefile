@@ -28,9 +28,6 @@ profiling_test:
 	valgrind --tool=callgrind ./bin/main
 	callgrind_annotate callgrind.out.*
 
-profile: ./bin/main
-	valgrind --tool=callgrind ./bin/main
-
 .DEFAULT_GOAL := run
 run: ./bin/main
 	./bin/main
