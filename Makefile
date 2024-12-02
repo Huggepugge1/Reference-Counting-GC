@@ -10,11 +10,23 @@ bin/main: ./src/main.c ./src/refmem.h ./src/refmem.c | ./bin/
 memtest: ./bin/main
 	$(MEMTESTER) $(MEMFLAGS) ./bin/main
 
-cache_test: ./bin/main
+cache_test:
+	$(MAKE) clean
+	$(MAKE) bin/main
 	valgrind --tool=cachegrind ./bin/main
+	cachegrind-visualizer cachegrind.out.*
 
-memory_usage_test: ./bin/main
+memory_usage_test:
+	$(MAKE) clean
+	$(MAKE) bin/main
 	valgrind --tool=massif ./bin/main
+	massif-visualizer massif.out.*
+
+profiling_test:
+	$(MAKE) clean
+	$(MAKE) bin/main
+	valgrind --tool=callgrind ./bin/main
+	callgrind_annotate callgrind.out.*
 
 profile: ./bin/main
 	valgrind --tool=callgrind ./bin/main

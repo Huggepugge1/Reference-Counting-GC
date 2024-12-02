@@ -13,13 +13,12 @@ struct object {
     obj *data;
 
     int32_t rc;
-    uint32_t size;
-    uint32_t array_size;
 
     int8_t pointers;
     uint8_t destructor;
 
     bool freed;
+    bool array;
 };
 
 typedef struct object object_t;
@@ -120,12 +119,42 @@ size_t get_destructor_index(function1_t destructor) {
     return index;
 }
 
+void allocate_space() {
+    if (gc->count == gc->objects_size) {
+        gc->objects_size += PAGE_SIZE;
+        gc->objects = realloc(gc->objects, gc->objects_size * sizeof(object_t));
+        gc->reallocations++;
+    }
+}
+
 void default_destructor(obj *data) {
     object_t *object = get_object(data);
-    for (int element = 0; element < object->array_size; element++) {
+    size_t pointer_index = 0;
+    while (pointer_index < object->pointers) {
+        release(((void **)data)[pointer_index]);
+        pointer_index++;
+        object = get_object(data);
+    }
+}
+
+void initialize_object(size_t bytes, function1_t destructor, size_t pointers) {
+    object_t *object = &gc->objects[gc->count];
+
+    object->rc = 0;
+    object->destructor = get_destructor_index(destructor);
+    object->pointers = pointers;
+    object->array = false;
+    object->data = calloc(1, bytes);
+}
+
+void default_array_destructor(obj *data) {
+    object_t *object = get_object(data);
+    size_t object_size = *(size_t *)(data - sizeof(size_t) * 2);
+    size_t elements = *(size_t *)(data - sizeof(size_t));
+    for (int element = 0; element < elements; element++) {
         size_t pointer_index = 0;
         while (pointer_index < object->pointers) {
-            release(((void **)(data + object->size * element))[pointer_index]);
+            release(((void **)(data + object_size * element))[pointer_index]);
             pointer_index++;
             object = get_object(data);
         }
@@ -170,26 +199,7 @@ void allocate_space() {
     }
 }
 
-void initialize_object(size_t elements, size_t bytes, function1_t destructor,
-                       size_t pointers) {
-    object_t *object = &gc->objects[gc->count];
-
-    object->rc = 0;
-    object->size = bytes;
-    object->array_size = elements;
-    object->destructor = get_destructor_index(destructor);
-    object->pointers = pointers;
-    object->data = calloc(elements, bytes);
-
-    object->freed = false;
-}
-
 obj *allocate(size_t bytes, function1_t destructor, size_t pointers) {
-    return allocate_array(1, bytes, destructor, pointers);
-}
-
-obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
-                    size_t pointers) {
     if (!gc) {
         gc = create_gc();
     }
@@ -200,10 +210,40 @@ obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
 
     allocate_space();
 
-    initialize_object(elements, elem_size, destructor, pointers);
+    initialize_object(bytes, destructor, pointers);
     gc->count++;
 
     return gc->objects[gc->count - 1].data;
+}
+
+void initialize_array_object(size_t elements, size_t bytes,
+                             function1_t destructor, size_t pointers) {
+    object_t *object = &gc->objects[gc->count];
+
+    object->rc = 0;
+    object->destructor = get_destructor_index(destructor);
+    object->pointers = pointers;
+    object->data = calloc(elements, bytes);
+
+    object->freed = false;
+}
+
+obj *allocate_array(size_t elements, size_t elem_size, function1_t destructor,
+                    size_t pointers) {
+    if (!gc) {
+        gc = create_gc();
+    }
+
+    if (destructor == NULL) {
+        destructor = default_array_destructor;
+    }
+
+    allocate_space();
+
+    initialize_array_object(elements, elem_size, destructor, pointers);
+    gc->count++;
+
+    return gc->objects[gc->count - 1].data + 2 * sizeof(size_t);
 }
 
 void deallocate(obj *data) {
