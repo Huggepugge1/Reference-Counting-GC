@@ -16,6 +16,9 @@ cache_test: ./bin/main
 memory_usage_test: ./bin/main
 	valgrind --tool=massif ./bin/main
 
+profile: ./bin/main
+	valgrind --tool=callgrind ./bin/main
+
 .DEFAULT_GOAL := run
 run: ./bin/main
 	./bin/main
@@ -27,3 +30,4 @@ clean:
 	rm -rf bin
 	rm -rf cachegrind.out.*
 	rm -rf massif.out.*
+	rm -rf callgrind.out.*
