@@ -5,9 +5,10 @@
 #include <stdlib.h>
 
 #define GC_DEFAULT_LIMIT 10000
-#define PAGE_SIZE 128
+#define PAGE_SIZE 1024
 
 void default_destructor(obj *data);
+void default_array_destructor(obj *data);
 
 struct object {
     obj *data;
@@ -38,27 +39,29 @@ struct gc {
 
 struct gc *gc = NULL;
 
+bool obj_is_object(obj *data, object_t *object) {
+    if (object->array) {
+        return data == object->data + 2 * sizeof(size_t);
+    }
+    return data == object->data;
+}
+
 object_t *get_object(obj *object) {
     size_t index = 0;
     obj *data = NULL;
-    while (object != data && index < gc->count) {
-        data = gc->objects[index].data;
+    while (!obj_is_object(object, &gc->objects[index])) {
         index++;
     }
-    if (index - 1 < gc->count) {
-        return &gc->objects[index - 1];
-    }
-    return NULL;
+    return &gc->objects[index];
 }
 
 size_t get_object_position(obj *object) {
     size_t index = 0;
     obj *data = NULL;
-    while (object != data && index < gc->count) {
-        data = gc->objects[index].data;
+    while (!obj_is_object(object, &gc->objects[index])) {
         index++;
     }
-    return index - 1;
+    return index;
 }
 
 void retain(obj *data) {
@@ -98,9 +101,10 @@ struct gc *create_gc() {
     gc->limit = GC_DEFAULT_LIMIT;
     gc->cascade_count = 0;
 
-    gc->destructors = malloc(2 * sizeof(function1_t));
+    gc->destructors = malloc(3 * sizeof(function1_t));
     gc->destructors[0] = NULL;
     gc->destructors[1] = default_destructor;
+    gc->destructors[2] = default_array_destructor;
     gc->destructor_count = 2;
 
     gc->reallocations = 0;
@@ -151,20 +155,6 @@ void initialize_object(size_t bytes, function1_t destructor, size_t pointers) {
     object->data = calloc(1, bytes);
 }
 
-void default_array_destructor(obj *data) {
-    object_t *object = get_object(data);
-    size_t object_size = *(size_t *)(data - sizeof(size_t) * 2);
-    size_t elements = *(size_t *)(data - sizeof(size_t));
-    for (int element = 0; element < elements; element++) {
-        size_t pointer_index = 0;
-        while (pointer_index < object->pointers) {
-            release(((void **)(data + object_size * element))[pointer_index]);
-            pointer_index++;
-            object = get_object(data);
-        }
-    }
-}
-
 obj *allocate(size_t bytes, function1_t destructor, size_t pointers) {
     if (!gc) {
         gc = create_gc();
@@ -180,6 +170,20 @@ obj *allocate(size_t bytes, function1_t destructor, size_t pointers) {
     gc->count++;
 
     return gc->objects[gc->count - 1].data;
+}
+
+void default_array_destructor(obj *data) {
+    object_t *object = get_object(data);
+    size_t elements = *(size_t *)(data - sizeof(size_t) * 2);
+    size_t object_size = *(size_t *)(data - sizeof(size_t));
+    for (int element = 0; element < elements; element++) {
+        size_t pointer_index = 0;
+        while (pointer_index < object->pointers) {
+            release(((void **)(data + object_size * element))[pointer_index]);
+            pointer_index++;
+            object = get_object(data);
+        }
+    }
 }
 
 void initialize_array_object(size_t elements, size_t bytes,
@@ -224,12 +228,18 @@ void deallocate(obj *data) {
     object = get_object(data);
     free(object->data);
 
-    while (position < gc->count - 1) {
+    gc->count--;
+
+    while (position < gc->count) {
         gc->objects[position] = gc->objects[position + 1];
         position++;
     }
 
-    gc->count--;
+    if (gc->objects_size - gc->count > PAGE_SIZE) {
+        gc->objects_size -= PAGE_SIZE;
+        gc->objects = realloc(gc->objects, gc->objects_size * sizeof(object_t));
+        gc->reallocations++;
+    }
 }
 
 void set_cascade_limit(size_t limit) { gc->limit = limit; }
