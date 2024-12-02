@@ -13,7 +13,8 @@ struct cell {
 
 void test_array() {
     const size_t ARRAY_SIZE = 10000;
-    size_t **array = allocate_array(ARRAY_SIZE, sizeof(size_t *), NULL, 1);
+    size_t **array =
+        allocate_array(ARRAY_SIZE, sizeof(size_t *), NULL, ARRAY_SIZE);
     retain(array);
 
     for (size_t i = 0; i < ARRAY_SIZE; i++) {
